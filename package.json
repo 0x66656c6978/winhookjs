@@ -1,0 +1,24 @@
+{
+  "name": "winhook",
+  "version": "1.0.0",
+  "description": "",
+  "main": "main.cc",
+  "gypfile": true,
+  "scripts": {
+    "start": "node index.js",
+    "build:dev": "node-gyp -j 16 build --debug",
+    "build": "node-gyp -j 16 build",
+    "rebuild:dev": "node-gyp -j 16 rebuild --debug",
+    "rebuild": "node-gyp -j 16 rebuild",
+    "clean": "node-gyp clean",
+    "test": "mocha"
+  },
+  "author": "",
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "node-gyp": "^4.0.0"
+  },
+  "dependencies": {
+    "node-addon-api": "^1.6.3"
+  }
+}
