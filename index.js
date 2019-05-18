@@ -10,7 +10,4 @@ try {
     }
 }
 
-var input = new winhook.Input();
-input.type = 5;
-
 module.exports = winhook;
