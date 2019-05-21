@@ -1,7 +1,5 @@
 #include "InputNapi.h"
 
-#include <iostream>
-
 namespace winhook {
     namespace napi {
         namespace input {
@@ -21,7 +19,6 @@ namespace winhook {
                 if(!args[0].IsNumber()) {
                     Napi::TypeError::New(env, "Expected DWORD").ThrowAsJavaScriptException();;
                 }
-
 
                 this->_instance->type = args[0].As<Napi::Number>().Uint32Value();
             }
@@ -46,7 +43,6 @@ namespace winhook {
             void InputNapi::SetHI(const Napi::CallbackInfo& args, const Napi::Value& value) {
                 Napi::Env env = args.Env();
                 Napi::HandleScope scope(env);
-                
                 
                 if (!args[0].IsObject()) {
                     Napi::TypeError::New(env, "Expected Object").ThrowAsJavaScriptException();;
@@ -154,6 +150,11 @@ namespace winhook {
                     tmp = obj["time"];
                     mi->time = tmp.ToNumber().Uint32Value();
                 }
+            }
+
+
+            winhook::input::Input* InputNapi::GetInputInstance() {
+                return this->_instance;    
             }
 
         }

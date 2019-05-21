@@ -5,9 +5,7 @@
         "cflags_cc!": [ "-fno-exceptions" ],
         "sources": [
             "src/main.cc",
-            "src/winhook/Winhook.cc",
             "src/winhook/napi/WinhookNapi.cc",
-            "src/winhook/napi/HwndNapi.cc",
             "src/winhook/napi/input/InputNapi.cc",
         ],
         'include_dirs': [

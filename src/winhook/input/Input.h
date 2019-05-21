@@ -21,9 +21,17 @@ namespace winhook {
 
             void raw(INPUT* inp) {
                 inp->type = type;
-                hi->raw(&(inp->hi));
-                mi->raw(&(inp->mi));
-                ki->raw(&(inp->ki));
+                switch (inp->type) {
+                    case INPUT_HARDWARE:
+                        hi->raw(&(inp->hi));
+                        break;
+                    case INPUT_MOUSE:
+                        mi->raw(&(inp->mi));                        
+                        break;
+                    case INPUT_KEYBOARD:
+                        ki->raw(&(inp->ki));
+                        break;
+                }
             }
 
             static Input* create(INPUT inp) {

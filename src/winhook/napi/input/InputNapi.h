@@ -18,6 +18,10 @@ namespace winhook {
                         InstanceAccessor("hi", &InputNapi::GetHI, &InputNapi::SetHI),
                         InstanceAccessor("ki", &InputNapi::GetKI, &InputNapi::SetKI),
                         InstanceAccessor("mi", &InputNapi::GetMI, &InputNapi::SetMI),
+                        StaticValue("KEYEVENTF_EXTENDEDKEY", Napi::Number::New(env, 0x0001)),
+                        StaticValue("KEYEVENTF_KEYUP", Napi::Number::New(env, 0x0002)),
+                        StaticValue("KEYEVENTF_SCANCODE", Napi::Number::New(env, 0x0008)),
+                        StaticValue("KEYEVENTF_UNICODE", Napi::Number::New(env, 0x0004)),
                     });
                     constructor = Napi::Persistent(func);
                     constructor.SuppressDestruct();
@@ -32,6 +36,8 @@ namespace winhook {
                         
                 }
 
+                winhook::input::Input* GetInputInstance();
+                
             private:
                 static Napi::FunctionReference constructor;
 
@@ -46,6 +52,8 @@ namespace winhook {
 
                 Napi::Value GetMI(const Napi::CallbackInfo& args);
                 void SetMI(const Napi::CallbackInfo& args, const Napi::Value& value);
+
+                
 
                 winhook::input::Input* _instance;
             };
