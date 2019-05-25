@@ -17,7 +17,7 @@ namespace winhook {
                 Napi::HandleScope scope(env);
 
                 if(!args[0].IsNumber()) {
-                    Napi::TypeError::New(env, "Expected DWORD").ThrowAsJavaScriptException();;
+                    return;
                 }
 
                 this->_instance->type = args[0].As<Napi::Number>().Uint32Value();
@@ -45,7 +45,7 @@ namespace winhook {
                 Napi::HandleScope scope(env);
                 
                 if (!args[0].IsObject()) {
-                    Napi::TypeError::New(env, "Expected Object").ThrowAsJavaScriptException();;
+                    return;
                 }
                 
                 winhook::input::HardwareInput* hi = this->_instance->hi;
@@ -84,7 +84,7 @@ namespace winhook {
                 Napi::Env env = args.Env();
                 Napi::HandleScope scope(env);
                 if (!args[0].IsObject()) {
-                    Napi::TypeError::New(env, "Expected Object").ThrowAsJavaScriptException();;
+                    return;
                 }
                 winhook::input::KeyboardInput* ki = this->_instance->ki;
                 Napi::Object obj = args[0].As<Napi::Object>();
@@ -125,7 +125,7 @@ namespace winhook {
                 Napi::Env env = args.Env();
                 Napi::HandleScope scope(env);
                 if (!args[0].IsObject()) {
-                    Napi::TypeError::New(env, "Expected Object").ThrowAsJavaScriptException();;
+                    return;
                 }
                 winhook::input::MouseInput* mi = this->_instance->mi;
                 Napi::Object obj = args[0].As<Napi::Object>();

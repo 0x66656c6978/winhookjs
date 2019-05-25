@@ -23,13 +23,16 @@ namespace winhook {
             public:
                 static Napi::Object Init(Napi::Env env, Napi::Object exports) {
                     Napi::HandleScope scope(env);
-                    
+
                     Napi::Function func = DefineClass(env, "Winhook", {
-                        InstanceMethod("FindWindow", &WinhookNapi::FindWindow),
-                        InstanceMethod("SetForegroundWindow", &WinhookNapi::SetForegroundWindow),
-                        InstanceMethod("GetForegroundWindow", &WinhookNapi::GetForegroundWindow),
-                        InstanceMethod("CreateProcess", &WinhookNapi::CreateProcess),
-                        InstanceMethod("SendInput", &WinhookNapi::SendInput),
+                        StaticMethod("FindWindow", &WinhookNapi::FindWindow),
+                        StaticMethod("ShowWindow", &WinhookNapi::ShowWindow),
+                        StaticMethod("SetForegroundWindow", &WinhookNapi::SetForegroundWindow),
+                        StaticMethod("GetForegroundWindow", &WinhookNapi::GetForegroundWindow),
+                        StaticMethod("CreateProcess", &WinhookNapi::CreateProcess),
+                        StaticMethod("SendInput", &WinhookNapi::SendInput),
+                        StaticMethod("CloseHandle", &WinhookNapi::CloseHandle),
+                        StaticMethod("CloseWindow", &WinhookNapi::CloseWindow),
                         StaticMethod("GetLastError", &WinhookNapi::GetLastError),
                         StaticValue("INPUT_MOUSE", Napi::Number::New(env, 0)),
                         StaticValue("INPUT_KEYBOARD", Napi::Number::New(env, 1)),
@@ -40,35 +43,22 @@ namespace winhook {
 
                     exports.Set("Winhook", func);
 
-                    HMODULE dllProc = ::LoadLibraryA("Kernelbase.dll");
-
-                    if(!dllProc) {
-                        Napi::TypeError::New(env, "Could not load Kernelbase.dll").ThrowAsJavaScriptException();
-                    }
-
-                    compareFn = (MyCompareObjectHandles*)::GetProcAddress(dllProc, "CompareObjectHandles");
-                    if(!compareFn) {
-                        Napi::TypeError::New(env, "Failed toload MyCompareObjectHandles").ThrowAsJavaScriptException();
-                    }
-
                     return exports;
                 }
                 WinhookNapi(const Napi::CallbackInfo& args): 
-                    Napi::ObjectWrap<WinhookNapi>(args), handles(std::vector<HANDLE>()) {
+                    Napi::ObjectWrap<WinhookNapi>(args) {
                 }
                 
             private:
-                std::vector<HANDLE> handles;
-                static MyCompareObjectHandles* compareFn;
-
-                Napi::Value CreateProcess(const Napi::CallbackInfo& args);
-                Napi::Value FindWindow(const Napi::CallbackInfo& args);
-                Napi::Value SendInput(const Napi::CallbackInfo& args);
-                Napi::Value SetForegroundWindow(const Napi::CallbackInfo& args);
-                Napi::Value GetForegroundWindow(const Napi::CallbackInfo& args);
+                static Napi::Value CreateProcess(const Napi::CallbackInfo& args);
+                static Napi::Value FindWindow(const Napi::CallbackInfo& args);
+                static Napi::Value ShowWindow(const Napi::CallbackInfo& args);
+                static Napi::Value SendInput(const Napi::CallbackInfo& args);
+                static Napi::Value SetForegroundWindow(const Napi::CallbackInfo& args);
+                static Napi::Value GetForegroundWindow(const Napi::CallbackInfo& args);
+                static Napi::Value CloseHandle(const Napi::CallbackInfo& args);
+                static Napi::Value CloseWindow(const Napi::CallbackInfo& args);
                 static Napi::Value GetLastError(const Napi::CallbackInfo& args);
-
-                int _GetHandleIndex(HANDLE target);
 
                 static Napi::FunctionReference constructor;
         };

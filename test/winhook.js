@@ -20,7 +20,7 @@ function canGetAndSetInteger(scopeName, valueName, isShortValue, isUnsigned) {
         }
     }
 }
-function zomg(inputs, char, index) {
+function zomg(payload, inputs, char, index) {
     var vk = char.charCodeAt(0);
     if (common.isUpper(char) && !common.isUpper(payload[index-1])) {
         inputs.push(common.createVirtualKeyInput(0x10, 0));
@@ -36,6 +36,10 @@ function zomg(inputs, char, index) {
     }
     return inputs;
 }
+
+const notepadExecutable = "C:\\Windows\\System32\\notepad.exe";
+const notepadWindowName = "Unbenannt - Editor";
+
 describe('winhook', function () {
     describe('Input', function() {
         describe('#hi', function () {
@@ -58,7 +62,10 @@ describe('winhook', function () {
         })
     });
     describe('Winhook', function() {
-        var WH = new winhook.Winhook();
+        var WH = winhook.Winhook;
+
+        var notepadHWND, notepadProcess;
+
         describe('GetLastError', function () {
             it('should return 0 if no error occured', function () {
                 assert.equal(0, winhook.Winhook.GetLastError());
@@ -67,28 +74,36 @@ describe('winhook', function () {
 
         describe('CreateProcess', function () {
             it('should create a process', function () {
-                WH.CreateProcess("C:\\Windows\\System32\\notepad.exe", null);
+                notepadProcess = WH.CreateProcess(notepadExecutable, null);
+            })
+        })
+
+        describe('CloseHandle', function () {
+            it('should close the process handle of the notepad process', function () {
+                assert.equal(WH.CloseHandle(notepadProcess.hProcess), true);
+            })
+            it('should close the thread handle of the notepad process', function () {
+                assert.equal(WH.CloseHandle(notepadProcess.hThread), true);
             })
         })
 
         describe('FindWindow', function () {
             it('should find notepad.exe', function () {
-                var idx = WH.FindWindow("Unbenannt - Editor");
-                assert.equal(idx, 0);
+                notepadHWND = WH.FindWindow(notepadWindowName);
+                assert.notEqual(notepadHWND, 0);
             });
         })
 
         describe('SetForegroundWindow', function () {
             it('should set notepad as foreground window', function () {
-                var r = WH.SetForegroundWindow(0);
-                assert.equal(r, true);
+                assert.equal(WH.SetForegroundWindow(notepadHWND), true);
             })
         })
 
         describe('GetForegroundWindow', function () {
             it('should get the foreground window', function () {
-                var idx = WH.GetForegroundWindow();
-                assert.equal(idx, 0);
+                var notepadHWND2 = WH.GetForegroundWindow();
+                assert.equal(notepadHWND, notepadHWND2);
             })
         })
 
@@ -98,20 +113,61 @@ describe('winhook', function () {
 Hello
 World
 `
-                const inputs = payload.split('').reduce(zomg, []);
+                const inputs = payload.split('').reduce(zomg.bind(this, payload), []);
                 var numInputsSent = WH.SendInput.apply(WH, inputs);
                 assert.equal(numInputsSent, inputs.length);
             })
-            it('should send random stuff to the notepad window', function () {
-                var payload = '';
-                for (var i = 0; i < 10000; i++) {
-                    payload += String.fromCharCode(Math.random() * 255)
-                }
-                const inputs = payload.split('').reduce(zomg, []);
+
+
+            it('should send ctrl+c to the notepad window', function () {
+                var input = new winhook.Input();
+                var inputs = [];
+                input.type = winhook.Winhook.INPUT_KEYBOARD;
+                input.ki = { wVk: 0x11 };  // ctrl
+                inputs.push(input);
+        
+                input = new winhook.Input();
+                input.type = winhook.Winhook.INPUT_KEYBOARD;
+                input.ki = { wVk: 0x43 }; // C
+                inputs.push(input);
+        
+                input = new winhook.Input();
+                input.type = winhook.Winhook.INPUT_KEYBOARD;
+                input.ki = { wVk: 0x43, dwFlags: winhook.Input.KEYEVENTF_KEYUP }; // C up
+                inputs.push(input);
+        
+                input = new winhook.Input();
+                input.type = winhook.Winhook.INPUT_KEYBOARD;
+                input.ki = { wVk: 0x11, dwFlags: winhook.Input.KEYEVENTF_KEYUP }; // ctrl up
+                inputs.push(input);
                 var numInputsSent = WH.SendInput.apply(WH, inputs);
                 assert.equal(numInputsSent, inputs.length);
             })
+
+            // // jk
+            // it('should send random stuff to the notepad window', function () {
+            //     var payload = '';
+            //     for (var i = 0; i < 10000; i++) {
+            //         payload += String.fromCharCode(Math.random() * 255)
+            //     }
+            //     const inputs = payload.split('').reduce(zomg.bind(this, payload), []);
+            //     var numInputsSent = WH.SendInput.apply(WH, inputs);
+            //     assert.equal(numInputsSent, inputs.length);
+            // })
+
         });
 
+        describe('CloseWindow', function () {
+            it('should close the notepad window', function () {
+                assert.equal(WH.CloseWindow(notepadHWND), true);
+                assert.notEqual(WH.FindWindow(notepadWindowName), 0);
+            })
+        })
+
+        describe('ShowWindow', function () {
+            it('should maximize the notepad window', function () {
+                assert.equal(WH.ShowWindow(notepadHWND, 3), false); // false means it was previously hidden, which it should be because of CloseWindow
+            })
+        })
     })
 });

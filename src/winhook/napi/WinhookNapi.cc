@@ -2,8 +2,10 @@
 
 namespace winhook {
     namespace napi {
+
+        using winhook::input::Input;
+
         Napi::FunctionReference WinhookNapi::constructor;
-        MyCompareObjectHandles* WinhookNapi::compareFn;
 
         Napi::Value WinhookNapi::CreateProcess(const Napi::CallbackInfo& args) {
             Napi::Env env = args.Env();
@@ -27,45 +29,32 @@ namespace winhook {
                 &si,
                 &pi
             )) {
-                DWORD err = ::GetLastError();
-                // use FormatMessage
-                Napi::String sErr = Napi::Number::New(env, err).ToString();
-                Napi::String errMsg = Napi::String::New(env, "Creating Process failed. Error Code: ");
-                std::string tmp = std::string(errMsg) + std::string(sErr);
-                Napi::TypeError::New(env, tmp).ThrowAsJavaScriptException();
+                return Napi::Number::New(env, -1);
             }
 
-            ::CloseHandle(pi.hProcess);
-            ::CloseHandle(pi.hThread);
-            
-            return Napi::Number::New(env, 0);
+            Napi::Object ret = Napi::Object::New(env);
+            ret["hProcess"] = Napi::Value(Napi::Number::New(env, (unsigned long long)pi.hProcess));
+            ret["hThread"] = Napi::Value(Napi::Number::New(env, (unsigned long long)pi.hThread));
+            return ret;
         }
 
         Napi::Value WinhookNapi::FindWindow(const Napi::CallbackInfo& args) {
             Napi::Env env = args.Env();
             Napi::HandleScope scope(env);
             if (!args[0].IsString()) {
-                Napi::TypeError::New(env, "String expected").ThrowAsJavaScriptException();
+                return Napi::Number::New(env, -1);
             }
             Napi::String windowName = args[0].As<Napi::String>();
             HWND hwnd;
             int retries = 0;
             while((hwnd = ::FindWindowA(NULL, windowName.Utf8Value().c_str())) == NULL) {
                 if (retries > MAX_RETRIES) {
-                    Napi::TypeError::New(env, "Could not find specified window.").ThrowAsJavaScriptException();
+                    return Napi::Number::New(env, -1);
                 }
                 Sleep(30);
                 retries++;
             }
-
-            int index = _GetHandleIndex(hwnd);
-
-            if (index == -1) {
-                handles.push_back(hwnd);
-                return Napi::Boolean::New(env, false);
-            }
-
-            return Napi::Boolean::New(env, true);
+            return Napi::Number::New(env, (unsigned long long)hwnd);
         }
         
         Napi::Value WinhookNapi::SendInput(const Napi::CallbackInfo& args) {
@@ -75,33 +64,159 @@ namespace winhook {
             INPUT *nativeInputs = (INPUT*)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(INPUT) * args.Length());
 
             for (int i = 0; i < args.Length(); i++) {
+                INPUT current;
                 if (!args[i].IsObject()) {
-                    // use FormatMessage
-                    Napi::TypeError::New(env, "Expected an instance of Input").ThrowAsJavaScriptException();
+                    printf("inputs[%d] is not an object.\n", i);
+                    return Napi::Number::New(env, -1);
                 }
-                input::InputNapi* inputWrap = Napi::ObjectWrap<input::InputNapi>::Unwrap(args[i].ToObject());
-                if (inputWrap == NULL) {
-                    Napi::TypeError::New(env, "Input malformed").ThrowAsJavaScriptException();
-                }
-                winhook::input::Input *input = inputWrap->GetInputInstance();
+                Napi::Object objArg = args[i].ToObject();
+                unsigned int type;
 
-                switch(input->type) {
-                    case INPUT_KEYBOARD: {
-                        printf("KI. wVk=%x wScan=%x dwFlags=%x time=%d\n", input->ki->wVk, input->ki->wScan, input->ki->dwFlags, input->ki->time);
-                    }
+                if (!objArg.Has("type")) {
+                    printf("inputs[%d].type is undefined.\n", i);
+                    return Napi::Number::New(env, -1);
+                }
+               
+                type = Napi::Value(objArg["type"]).ToNumber().Uint32Value();
+
+                const char* subProperty = NULL;
+                switch (type) {
+                    case INPUT_HARDWARE: subProperty = "hi"; break;
+                    case INPUT_MOUSE: subProperty = "mi"; break;
+                    case INPUT_KEYBOARD: subProperty = "ki"; break;
+                    default:
+                        printf("inputs[%d].type is invalid.\n", i);
+                        return Napi::Number::New(env, -1);
+                }
+
+                if (!objArg.Has(subProperty)) {
+                    printf("inputs[%d].%s is not defined.\n", i, subProperty);
+                    return Napi::Number::New(env, -1);
+                }
+
+                Napi::Object subObjVal = Napi::Value(objArg[subProperty]).ToObject();
+
+                current.type = type;
+                auto properties = std::vector<const char*>();
+
+                switch (type) {
+                    case INPUT_HARDWARE: 
+                        properties.push_back("uMsg");
+                        properties.push_back("wParamL");
+                        properties.push_back("wParamH");
+                    break;
+                    case INPUT_MOUSE:
+                        properties.push_back("dx");
+                        properties.push_back("dy");
+                        properties.push_back("mouseData");
+                        properties.push_back("dwFlags");
+                        properties.push_back("time");
+                    break;
+                    case INPUT_KEYBOARD:
+                        properties.push_back("wVk");
+                        properties.push_back("wScan");
+                        properties.push_back("dwFlags");
+                        properties.push_back("time");
                     break;
                 }
 
-                input->raw(&nativeInputs[i]);
-
-                switch(input->type) {
-                    case INPUT_KEYBOARD: {
-                        printf("KI. wVk=%x wScan=%x dwFlags=%x time=%d\n", nativeInputs[i].ki.wVk, nativeInputs[i].ki.wScan, nativeInputs[i].ki.dwFlags, nativeInputs[i].ki.time);
+                for (auto j = properties.begin(); j != properties.end(); j++) {
+                    const char* propertyName = *j;
+                    if (!subObjVal.Has(propertyName)) {
+                        printf("inputs[%d].%s.%s is undefined.\n", i, subProperty, propertyName);
+                        return Napi::Number::New(env, -1);
                     }
-                    break;
                 }
 
+                HARDWAREINPUT hi;
+                MOUSEINPUT mi;
+                KEYBDINPUT ki;
 
+                switch (type) {
+                    case INPUT_HARDWARE: {
+                        Napi::Value uMsg(subObjVal["uMsg"]);
+                        Napi::Value wParamL(subObjVal["wParamL"]);
+                        Napi::Value wParamH(subObjVal["wParamH"]);
+                        if (!uMsg.IsNumber()) {
+                            printf("inputs[%d].hi.uMsg should be a number.\n", i);
+                            return Napi::Number::New(env, -1);
+                        }
+                        if (!wParamL.IsNumber()) {
+                            printf("inputs[%d].hi.wParamL should be a number.\n", i);
+                            return Napi::Number::New(env, -1);
+                        }
+                        if (!wParamH.IsNumber()) {
+                            printf("inputs[%d].hi.wParamH should be a number.\n", i);
+                            return Napi::Number::New(env, -1);
+                        }
+                        hi.uMsg = uMsg.ToNumber().Uint32Value();
+                        hi.wParamH = uMsg.ToNumber().Uint32Value();
+                        hi.wParamL = uMsg.ToNumber().Uint32Value();
+                        current.hi = hi;
+                    }
+                    case INPUT_MOUSE: {
+                        Napi::Value dx(subObjVal["dx"]);
+                        Napi::Value dy(subObjVal["dy"]);
+                        Napi::Value mouseData(subObjVal["mouseData"]);
+                        Napi::Value dwFlags(subObjVal["dwFlags"]);
+                        Napi::Value time(subObjVal["time"]);
+                        if (!dx.IsNumber()) {
+                            printf("inputs[%d].mi.dx should be a number.\n", i);
+                            return Napi::Number::New(env, -1);
+                        }
+                        if (!dy.IsNumber()) {
+                            printf("inputs[%d].mi.dy should be a number.\n", i);
+                            return Napi::Number::New(env, -1);
+                        }
+                        if (!mouseData.IsNumber()) {
+                            printf("inputs[%d].mi.mouseData should be a number.\n", i);
+                            return Napi::Number::New(env, -1);
+                        }
+                        if (!dwFlags.IsNumber()) {
+                            printf("inputs[%d].mi.dwFlags should be a number.\n", i);
+                            return Napi::Number::New(env, -1);
+                        }
+                        if (!time.IsNumber()) {
+                            printf("inputs[%d].mi.time should be a number.\n", i);
+                            return Napi::Number::New(env, -1);
+                        }
+                        
+                        mi.dx = dx.ToNumber().Int32Value();
+                        mi.dy = dy.ToNumber().Int32Value();
+                        mi.mouseData = mouseData.ToNumber().Uint32Value();
+                        mi.dwFlags = dwFlags.ToNumber().Uint32Value();
+                        mi.time = time.ToNumber().Uint32Value();
+                        current.mi = mi;
+                    }
+                    case INPUT_KEYBOARD: {
+                        Napi::Value wVk(subObjVal["wVk"]);
+                        Napi::Value wScan(subObjVal["wScan"]);
+                        Napi::Value dwFlags(subObjVal["dwFlags"]);
+                        Napi::Value time(subObjVal["time"]);
+                        if (!wVk.IsNumber()) {
+                            printf("inputs[%d].ki.wVk should be a number.\n", i);
+                            return Napi::Number::New(env, -1);
+                        }
+                        if (!wScan.IsNumber()) {
+                            printf("inputs[%d].ki.wScan should be a number.\n", i);
+                            return Napi::Number::New(env, -1);
+                        }
+                        if (!dwFlags.IsNumber()) {
+                            printf("inputs[%d].ki.dwFlags should be a number.\n", i);
+                            return Napi::Number::New(env, -1);
+                        }
+                        if (!time.IsNumber()) {
+                            printf("inputs[%d].ki.time should be a number.\n", i);
+                            return Napi::Number::New(env, -1);
+                        }
+                        ki.wVk = wVk.ToNumber().Int32Value();
+                        ki.wScan = wScan.ToNumber().Int32Value();
+                        ki.dwFlags = dwFlags.ToNumber().Uint32Value();
+                        ki.time = time.ToNumber().Uint32Value();
+                        current.ki = ki;
+                    }
+                }
+                nativeInputs[i] = current;
             }
 
             int n = ::SendInput(args.Length(), nativeInputs, sizeof(INPUT));
@@ -114,14 +229,17 @@ namespace winhook {
             Napi::HandleScope scope(env);
             
             if (!args[0].IsNumber()) {
-                Napi::TypeError::New(env, "Expected an index of a window").ThrowAsJavaScriptException();
+                return Napi::Number::New(env, -1);
             }
-            int index = args[0].ToNumber().Int32Value();
-            if (index >= handles.max_size()) {
-                Napi::TypeError::New(env, "Window index out of range").ThrowAsJavaScriptException();
-            }
-            HWND target = (HWND)handles[index];
-            return Napi::Boolean::New(env, ::SetForegroundWindow(target));
+
+            
+            Napi::Value arg = args[0];
+            Napi::Number nArg = arg.ToNumber();
+
+            HWND target = (HWND)nArg.Int64Value();
+            bool result = ::SetForegroundWindow(target);
+
+            return Napi::Boolean::New(env, result);
         }
 
 
@@ -134,20 +252,13 @@ namespace winhook {
 
             while((target = ::GetForegroundWindow()) == NULL) {
                 if (retries > MAX_RETRIES) {
-                    Napi::TypeError::New(env, "Could not find the current foreground window.").ThrowAsJavaScriptException();
+                    return Napi::Number::New(env, -1);
                 }
                 Sleep(30);
                 retries++;
             }
 
-            int index = _GetHandleIndex(target);
-
-            if (index == -1) {
-                handles.push_back(target);
-                index = handles.size() - 1;
-            }
-
-            return Napi::Number::New(env, index);
+            return Napi::Number::New(env, (unsigned long long)target);
         }
 
         Napi::Value WinhookNapi::GetLastError(const Napi::CallbackInfo& args) {
@@ -157,17 +268,26 @@ namespace winhook {
             return Napi::Number::New(env, lastErr);
         }
 
-        int WinhookNapi::_GetHandleIndex(HANDLE target) {
-            bool found = false;
-            int index = 0;
-            int sz = handles.size();
-            for (; index < sz; ++index) {
-                if (target == handles[index]) {
-                    return index;
-                }
-            }
-            return -1;
+        Napi::Value WinhookNapi::CloseHandle(const Napi::CallbackInfo& args) {
+            Napi::Env env = args.Env();
+            Napi::HandleScope scope(env);
+            HANDLE handle = (HANDLE)args[0].ToNumber().Int64Value();
+            return Napi::Boolean::New(env, ::CloseHandle(handle));
         }
 
+        Napi::Value WinhookNapi::CloseWindow(const Napi::CallbackInfo& args) {
+            Napi::Env env = args.Env();
+            Napi::HandleScope scope(env);
+            HWND hwnd = (HWND)args[0].ToNumber().Int64Value();
+            return Napi::Boolean::New(env, ::CloseWindow(hwnd));
+        }
+
+        Napi::Value WinhookNapi::ShowWindow(const Napi::CallbackInfo& args) {
+            Napi::Env env = args.Env();
+            Napi::HandleScope scope(env);
+            HWND hwnd = (HWND)args[0].ToNumber().Int64Value();
+            int nShowCmd = args[0].ToNumber().Int32Value();
+            return Napi::Boolean::New(env, ::ShowWindow(hwnd, nShowCmd));
+        }
     }
 }
